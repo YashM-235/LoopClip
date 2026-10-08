@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>LoopClip</title>
+
+    <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+
+    <div class="container">
+
+        <header>
+            <h1>LoopClip</h1>
+            <p>Replay any part of a video.</p>
+        </header>
+
+
+        <section class="video-status">
+
+            <span id="statusDot"></span>
+
+            <span id="statusText">
+                Checking for video...
+            </span>
+
+        </section>
+
+
+        <section class="controls">
+
+            <label for="startTime">
+                Start time
+            </label>
+
+            <input
+                id="startTime"
+                type="text"
+                placeholder="00:00"
+                value="00:00"
+            >
+
+
+            <label for="endTime">
+                End time
+            </label>
+
+            <input
+                id="endTime"
+                type="text"
+                placeholder="00:10"
+                value="00:10"
+            >
+
+
+            <label for="repeatCount">
+                Repetitions
+            </label>
+
+            <input
+                id="repeatCount"
+                type="number"
+                min="1"
+                value="5"
+            >
+
+
+            <label class="checkbox-row">
+
+                <input
+                    id="infiniteLoop"
+                    type="checkbox"
+                    checked
+                >
+
+                Infinite loop
+
+            </label>
+
+        </section>
+
+
+        <section class="actions">
+
+            <button
+                id="startButton"
+                class="primary"
+            >
+                Start Loop
+            </button>
+
+            <button
+                id="stopButton"
+                class="secondary"
+            >
+                Stop
+            </button>
+
+        </section>
+
+
+        <div id="message" class="message"></div>
+
+
+        <footer>
+            LoopClip v0.1.0
+        </footer>
+
+    </div>
+
+
+    <script src="popup.js"></script>
+
+</body>
+
+</html>
