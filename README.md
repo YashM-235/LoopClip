@@ -78,7 +78,7 @@ No backend or database is required for the prototype.
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/LoopClip.git
+git clone https://github.com/YashM-235/LoopClip.git
 cd LoopClip
 ```
 
