@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "LoopClip",
+  "version": "0.1.0",
+  "description": "Replay a selected segment of a video directly in your browser.",
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "LoopClip"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content/content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
