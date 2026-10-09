@@ -1,3 +1,4 @@
+
 let loopState = {
     active: false,
     start: 0,
@@ -9,35 +10,30 @@ let loopState = {
 let currentVideo = null;
 let timeUpdateHandler = null;
 
-
-/* --------------------------------
-   Find the best video element
---------------------------------- */
-
 function findVideo() {
-    const videos = Array.from(document.querySelectorAll("video"));
+    const videos = [...document.querySelectorAll("video")];
 
-    if (videos.length === 0) {
-        return null;
-    }
+    if (!videos.length) return null;
 
-    // Prefer a visible video
-    const visibleVideo = videos.find(video => {
-        const rect = video.getBoundingClientRect();
+    const visibleVideos = videos
+        .filter(video => {
+            const rect = video.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0;
+        })
+        .sort((a, b) => {
+            const areaA =
+                a.getBoundingClientRect().width *
+                a.getBoundingClientRect().height;
 
-        return (
-            rect.width > 0 &&
-            rect.height > 0
-        );
-    });
+            const areaB =
+                b.getBoundingClientRect().width *
+                b.getBoundingClientRect().height;
 
-    return visibleVideo || videos[0];
+            return areaB - areaA;
+        });
+
+    return visibleVideos[0] || videos[0];
 }
-
-
-/* --------------------------------
-   Remove previous listener
---------------------------------- */
 
 function removeLoopListener() {
     if (currentVideo && timeUpdateHandler) {
@@ -50,10 +46,26 @@ function removeLoopListener() {
     timeUpdateHandler = null;
 }
 
+function getVideoInfo() {
+    const video = findVideo();
 
-/* --------------------------------
-   Start looping
---------------------------------- */
+    if (!video) {
+        return {
+            success: false,
+            message: "No HTML5 video found on this page."
+        };
+    }
+
+    return {
+        success: true,
+        currentTime: video.currentTime,
+        duration: Number.isFinite(video.duration)
+            ? video.duration
+            : null,
+        paused: video.paused,
+        playbackRate: video.playbackRate
+    };
+}
 
 function startLoop(start, end, repeatCount, infinite) {
     const video = findVideo();
@@ -61,7 +73,7 @@ function startLoop(start, end, repeatCount, infinite) {
     if (!video) {
         return {
             success: false,
-            message: "No video element found on this page."
+            message: "No HTML5 video found."
         };
     }
 
@@ -73,17 +85,27 @@ function startLoop(start, end, repeatCount, infinite) {
     ) {
         return {
             success: false,
-            message: "Invalid start or end time."
+            message: "Enter a valid start and end time."
         };
     }
 
     if (
-        Number.isFinite(video.duration) &&
-        start >= video.duration
+        !Number.isFinite(video.duration) ||
+        end > video.duration
     ) {
         return {
             success: false,
-            message: "Start time is beyond the video duration."
+            message: "End time exceeds the available video duration."
+        };
+    }
+
+    if (
+        !infinite &&
+        (!Number.isInteger(repeatCount) || repeatCount < 1)
+    ) {
+        return {
+            success: false,
+            message: "Repetitions must be a positive whole number."
         };
     }
 
@@ -102,33 +124,29 @@ function startLoop(start, end, repeatCount, infinite) {
     video.currentTime = start;
 
     timeUpdateHandler = () => {
-        if (!loopState.active) {
+        if (
+            !loopState.active ||
+            video.currentTime < loopState.end
+        ) {
             return;
         }
 
-        if (video.currentTime >= loopState.end) {
+        if (!loopState.infinite) {
+            loopState.loopsRemaining--;
 
-            if (!loopState.infinite) {
-                loopState.loopsRemaining--;
-
-                if (loopState.loopsRemaining <= 0) {
-                    stopLoop();
-                    return;
-                }
+            if (loopState.loopsRemaining <= 0) {
+                stopLoop();
+                return;
             }
-
-            video.currentTime = loopState.start;
         }
+
+        video.currentTime = loopState.start;
     };
 
-    video.addEventListener(
-        "timeupdate",
-        timeUpdateHandler
-    );
+    video.addEventListener("timeupdate", timeUpdateHandler);
 
     video.play().catch(() => {
-        // Browser may block autoplay.
-        // User can manually press play.
+        // Autoplay may be restricted by the website or browser.
     });
 
     return {
@@ -137,14 +155,8 @@ function startLoop(start, end, repeatCount, infinite) {
     };
 }
 
-
-/* --------------------------------
-   Stop looping
---------------------------------- */
-
 function stopLoop() {
     loopState.active = false;
-
     removeLoopListener();
 
     return {
@@ -153,12 +165,7 @@ function stopLoop() {
     };
 }
 
-
-/* --------------------------------
-   Get video information
---------------------------------- */
-
-function getVideoInfo() {
+function setPlaybackRate(rate) {
     const video = findVideo();
 
     if (!video) {
@@ -168,45 +175,68 @@ function getVideoInfo() {
         };
     }
 
+    if (
+        !Number.isFinite(rate) ||
+        rate < 0.25 ||
+        rate > 4
+    ) {
+        return {
+            success: false,
+            message: "Invalid playback speed."
+        };
+    }
+
+    video.playbackRate = rate;
+
     return {
         success: true,
-        duration: Number.isFinite(video.duration)
-            ? video.duration
-            : null,
-        currentTime: video.currentTime,
-        paused: video.paused
+        playbackRate: video.playbackRate,
+        message: `Playback speed: ${rate}x`
     };
 }
 
-
-/* --------------------------------
-   Message handling
---------------------------------- */
-
 chrome.runtime.onMessage.addListener(
     (message, sender, sendResponse) => {
+        try {
+            let result;
 
-        if (message.action === "getVideoInfo") {
-            sendResponse(getVideoInfo());
-            return true;
-        }
+            switch (message.action) {
+                case "getVideoInfo":
+                    result = getVideoInfo();
+                    break;
 
-        if (message.action === "startLoop") {
+                case "startLoop":
+                    result = startLoop(
+                        message.start,
+                        message.end,
+                        message.repeatCount,
+                        message.infinite
+                    );
+                    break;
 
-            const result = startLoop(
-                message.start,
-                message.end,
-                message.repeatCount,
-                message.infinite
-            );
+                case "stopLoop":
+                    result = stopLoop();
+                    break;
+
+                case "setPlaybackRate":
+                    result = setPlaybackRate(message.rate);
+                    break;
+
+                default:
+                    result = {
+                        success: false,
+                        message: "Unknown action."
+                    };
+            }
 
             sendResponse(result);
-            return true;
+        } catch (error) {
+            sendResponse({
+                success: false,
+                message: error.message || "Unexpected error."
+            });
         }
 
-        if (message.action === "stopLoop") {
-            sendResponse(stopLoop());
-            return true;
-        }
+        return false;
     }
 );

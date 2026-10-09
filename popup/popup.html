@@ -1,120 +1,84 @@
+
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
     <title>LoopClip</title>
-
     <link rel="stylesheet" href="popup.css">
 </head>
-
 <body>
-
-    <div class="container">
-
+    <main class="container">
         <header>
-            <h1>LoopClip</h1>
-            <p>Replay any part of a video.</p>
+            <div class="brand">
+                <span class="brand-icon">↻</span>
+                <h1>LoopClip</h1>
+            </div>
+            <p>Replay the part that matters.</p>
         </header>
 
-
         <section class="video-status">
-
             <span id="statusDot"></span>
-
-            <span id="statusText">
-                Checking for video...
-            </span>
-
+            <span id="statusText">Checking for video...</span>
         </section>
 
+        <section class="timeline">
+            <div>
+                <span class="eyebrow">CURRENT POSITION</span>
+                <strong id="currentTime">--:--</strong>
+            </div>
+            <div class="duration-block">
+                <span class="eyebrow">DURATION</span>
+                <strong id="duration">--:--</strong>
+            </div>
+            <button id="refreshButton" class="icon-button" title="Refresh video information">↻</button>
+        </section>
 
         <section class="controls">
+            <label for="startTime">Start time</label>
+            <div class="time-row">
+                <input id="startTime" type="text" value="00:00" placeholder="MM:SS">
+                <button id="setStartButton" class="capture-button">Set Start</button>
+            </div>
 
-            <label for="startTime">
-                Start time
-            </label>
+            <label for="endTime">End time</label>
+            <div class="time-row">
+                <input id="endTime" type="text" value="00:10" placeholder="MM:SS">
+                <button id="setEndButton" class="capture-button">Set End</button>
+            </div>
 
-            <input
-                id="startTime"
-                type="text"
-                placeholder="00:00"
-                value="00:00"
-            >
+            <div class="speed-control">
+                <label for="playbackRate">Playback speed</label>
+                <select id="playbackRate">
+                    <option value="0.5">0.5×</option>
+                    <option value="0.75">0.75×</option>
+                    <option value="1" selected>1× Normal</option>
+                    <option value="1.25">1.25×</option>
+                    <option value="1.5">1.5×</option>
+                    <option value="1.75">1.75×</option>
+                    <option value="2">2×</option>
+                </select>
+            </div>
 
-
-            <label for="endTime">
-                End time
-            </label>
-
-            <input
-                id="endTime"
-                type="text"
-                placeholder="00:10"
-                value="00:10"
-            >
-
-
-            <label for="repeatCount">
-                Repetitions
-            </label>
-
-            <input
-                id="repeatCount"
-                type="number"
-                min="1"
-                value="5"
-            >
-
+            <label for="repeatCount">Number of repetitions</label>
+            <input id="repeatCount" type="number" min="1" max="999" value="5">
 
             <label class="checkbox-row">
-
-                <input
-                    id="infiniteLoop"
-                    type="checkbox"
-                    checked
-                >
-
-                Infinite loop
-
+                <input id="infiniteLoop" type="checkbox" checked>
+                <span>Repeat indefinitely</span>
             </label>
-
         </section>
-
 
         <section class="actions">
-
-            <button
-                id="startButton"
-                class="primary"
-            >
-                Start Loop
-            </button>
-
-            <button
-                id="stopButton"
-                class="secondary"
-            >
-                Stop
-            </button>
-
+            <button id="startButton" class="primary">▶ Start Loop</button>
+            <button id="stopButton" class="secondary">■ Stop</button>
         </section>
 
+        <p id="message" class="message" role="status" aria-live="polite"></p>
 
-        <div id="message" class="message"></div>
-
-
-        <footer>
-            LoopClip v0.1.0
-        </footer>
-
-    </div>
-
+        <footer>LOOPCLIP <span>•</span> v0.2.0</footer>
+    </main>
 
     <script src="popup.js"></script>
-
 </body>
-
 </html>
