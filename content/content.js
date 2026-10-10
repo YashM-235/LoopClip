@@ -193,8 +193,7 @@ function startLoop(start, end, repeatCount, infinite) {
         timeUpdateHandler
     );
 
-    // Additional boundary checks help when timeupdate
-    // events are too infrequent at faster playback rates.
+    // Additional boundary checks help when timeupdate events are too infrequent at faster playback rates.
     loopCheckTimer = setInterval(() => {
         checkLoopBoundary(video);
     }, 50);
