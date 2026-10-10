@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LoopClip",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Replay a selected segment of a video directly in your browser.",
   "permissions": [
     "activeTab",

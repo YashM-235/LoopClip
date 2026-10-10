@@ -1,4 +1,3 @@
-
 let loopState = {
     active: false,
     start: 0,
@@ -9,6 +8,7 @@ let loopState = {
 
 let currentVideo = null;
 let timeUpdateHandler = null;
+let loopCheckTimer = null;
 
 function findVideo() {
     const videos = [...document.querySelectorAll("video")];
@@ -18,21 +18,32 @@ function findVideo() {
     const visibleVideos = videos
         .filter(video => {
             const rect = video.getBoundingClientRect();
-            return rect.width > 0 && rect.height > 0;
+
+            return (
+                video.isConnected &&
+                rect.width > 0 &&
+                rect.height > 0
+            );
         })
         .sort((a, b) => {
-            const areaA =
-                a.getBoundingClientRect().width *
-                a.getBoundingClientRect().height;
+            const rectA = a.getBoundingClientRect();
+            const rectB = b.getBoundingClientRect();
 
-            const areaB =
-                b.getBoundingClientRect().width *
-                b.getBoundingClientRect().height;
-
-            return areaB - areaA;
+            return (
+                rectB.width * rectB.height -
+                rectA.width * rectA.height
+            );
         });
 
     return visibleVideos[0] || videos[0];
+}
+
+function getTargetVideo() {
+    if (currentVideo?.isConnected) {
+        return currentVideo;
+    }
+
+    return findVideo();
 }
 
 function removeLoopListener() {
@@ -41,13 +52,23 @@ function removeLoopListener() {
             "timeupdate",
             timeUpdateHandler
         );
+
+        currentVideo.removeEventListener(
+            "seeking",
+            timeUpdateHandler
+        );
+    }
+
+    if (loopCheckTimer !== null) {
+        clearInterval(loopCheckTimer);
+        loopCheckTimer = null;
     }
 
     timeUpdateHandler = null;
 }
 
 function getVideoInfo() {
-    const video = findVideo();
+    const video = getTargetVideo();
 
     if (!video) {
         return {
@@ -65,6 +86,41 @@ function getVideoInfo() {
         paused: video.paused,
         playbackRate: video.playbackRate
     };
+}
+
+function checkLoopBoundary(video) {
+    if (
+        !loopState.active ||
+        currentVideo !== video ||
+        !video.isConnected
+    ) {
+        return;
+    }
+
+    if (video.currentTime < loopState.end) {
+        return;
+    }
+
+    if (!loopState.infinite) {
+        loopState.loopsRemaining--;
+
+        if (loopState.loopsRemaining <= 0) {
+            // Finish on the selected endpoint.
+            loopState.active = false;
+
+            removeLoopListener();
+
+            video.currentTime = loopState.end;
+            video.pause();
+
+            currentVideo = null;
+
+            return;
+        }
+    }
+
+    // Restart the selected segment.
+    video.currentTime = loopState.start;
 }
 
 function startLoop(start, end, repeatCount, infinite) {
@@ -109,7 +165,8 @@ function startLoop(start, end, repeatCount, infinite) {
         };
     }
 
-    removeLoopListener();
+    // Clean up any previous loop before starting another.
+    stopLoop();
 
     currentVideo = video;
 
@@ -117,36 +174,35 @@ function startLoop(start, end, repeatCount, infinite) {
         active: true,
         start,
         end,
+        // The initial playback counts as the first pass.
         loopsRemaining: infinite ? Infinity : repeatCount,
         infinite
     };
 
-    video.currentTime = start;
-
     timeUpdateHandler = () => {
-        if (
-            !loopState.active ||
-            video.currentTime < loopState.end
-        ) {
-            return;
-        }
-
-        if (!loopState.infinite) {
-            loopState.loopsRemaining--;
-
-            if (loopState.loopsRemaining <= 0) {
-                stopLoop();
-                return;
-            }
-        }
-
-        video.currentTime = loopState.start;
+        checkLoopBoundary(video);
     };
 
-    video.addEventListener("timeupdate", timeUpdateHandler);
+    video.addEventListener(
+        "timeupdate",
+        timeUpdateHandler
+    );
+
+    video.addEventListener(
+        "seeking",
+        timeUpdateHandler
+    );
+
+    // Additional boundary checks help when timeupdate
+    // events are too infrequent at faster playback rates.
+    loopCheckTimer = setInterval(() => {
+        checkLoopBoundary(video);
+    }, 50);
+
+    video.currentTime = start;
 
     video.play().catch(() => {
-        // Autoplay may be restricted by the website or browser.
+        // The website or browser may block playback.
     });
 
     return {
@@ -157,7 +213,10 @@ function startLoop(start, end, repeatCount, infinite) {
 
 function stopLoop() {
     loopState.active = false;
+
     removeLoopListener();
+
+    currentVideo = null;
 
     return {
         success: true,
@@ -166,7 +225,7 @@ function stopLoop() {
 }
 
 function setPlaybackRate(rate) {
-    const video = findVideo();
+    const video = getTargetVideo();
 
     if (!video) {
         return {
@@ -191,7 +250,7 @@ function setPlaybackRate(rate) {
     return {
         success: true,
         playbackRate: video.playbackRate,
-        message: `Playback speed: ${rate}x`
+        message: `Playback speed: ${video.playbackRate}x`
     };
 }
 
