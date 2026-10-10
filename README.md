@@ -199,6 +199,11 @@ Some websites may:
 
 These cases will be addressed progressively as platform compatibility improves.
 
+## Testing Stages
+
+<img width="441" height="747" alt="image" src="https://github.com/user-attachments/assets/69e8cec2-bf69-41fc-9b94-b994463b1b59" />
+<h3 align="center">v 0.2.0 </h3>
+
 ## 📄 License
 
 MIT License.
