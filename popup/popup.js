@@ -1,6 +1,4 @@
-
 const NOTES_STORAGE_KEY = "loopclip_timestamp_notes";
-
 let activeTab = null;
 let currentPageKey = null;
 let editingNoteId = null;
