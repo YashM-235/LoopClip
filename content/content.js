@@ -316,7 +316,11 @@ chrome.runtime.onMessage.addListener(
                 case "setPlaybackRate":
                     result = setPlaybackRate(message.rate);
                     break;
-
+                
+                case "seekTo":
+                    result = seekTo(message.timestamp);
+                    break;
+                    
                 default:
                     result = {
                         success: false,
