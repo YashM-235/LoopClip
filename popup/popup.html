@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,75 +8,109 @@
     <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-    <main class="container">
-        <header>
-            <div class="brand">
-                <span class="brand-icon">↻</span>
+    <main class="app">
+        <header class="header">
+            <div>
                 <h1>LoopClip</h1>
+                <p class="tagline">Replay the part that matters.</p>
             </div>
-            <p>Replay the part that matters.</p>
+            <span class="version">v0.4.0</span>
         </header>
 
-        <section class="video-status">
-            <span id="statusDot"></span>
-            <span id="statusText">Checking for video...</span>
-        </section>
+        <section class="panel">
+            <h2>Video Loop</h2>
+            <p id="videoStatus" class="status">Checking video...</p>
 
-        <section class="timeline">
-            <div>
-                <span class="eyebrow">CURRENT POSITION</span>
-                <strong id="currentTime">--:--</strong>
-            </div>
-            <div class="duration-block">
-                <span class="eyebrow">DURATION</span>
-                <strong id="duration">--:--</strong>
-            </div>
-            <button id="refreshButton" class="icon-button" title="Refresh video information">↻</button>
-        </section>
+            <div class="field-row">
+                <label class="field">
+                    <span>Start (seconds)</span>
+                    <input id="startTime" type="number" min="0" step="0.1" value="0">
+                    <button id="setStartNow" class="secondary" type="button">
+                        Set to current time
+                    </button>
+                </label>
 
-        <section class="controls">
-            <label for="startTime">Start time</label>
-            <div class="time-row">
-                <input id="startTime" type="text" value="00:00" placeholder="MM:SS">
-                <button id="setStartButton" class="capture-button">Set Start</button>
+                <label class="field">
+                    <span>End (seconds)</span>
+                    <input id="endTime" type="number" min="0" step="0.1" value="10">
+                    <button id="setEndNow" class="secondary" type="button">
+                        Set to current time
+                    </button>
+                </label>
             </div>
 
-            <label for="endTime">End time</label>
-            <div class="time-row">
-                <input id="endTime" type="text" value="00:10" placeholder="MM:SS">
-                <button id="setEndButton" class="capture-button">Set End</button>
-            </div>
-
-            <div class="speed-control">
-                <label for="playbackRate">Playback speed</label>
-                <select id="playbackRate">
-                    <option value="0.5">0.5×</option>
-                    <option value="0.75">0.75×</option>
-                    <option value="1" selected>1× Normal</option>
-                    <option value="1.25">1.25×</option>
-                    <option value="1.5">1.5×</option>
-                    <option value="1.75">1.75×</option>
-                    <option value="2">2×</option>
-                </select>
-            </div>
-
-            <label for="repeatCount">Number of repetitions</label>
-            <input id="repeatCount" type="number" min="1" max="999" value="5">
+            <label class="field">
+                <span>Repetitions</span>
+                <input id="repeatCount" type="number" min="1" step="1" value="3">
+            </label>
 
             <label class="checkbox-row">
                 <input id="infiniteLoop" type="checkbox" checked>
-                <span>Repeat indefinitely</span>
+                <span>Loop indefinitely</span>
             </label>
+
+            <label class="field">
+                <span>Playback speed</span>
+                <select id="speedSelect">
+                    <option value="0.5">0.5×</option>
+                    <option value="0.75">0.75×</option>
+                    <option value="1" selected>1.00×</option>
+                    <option value="1.25">1.25×</option>
+                    <option value="1.5">1.50×</option>
+                    <option value="1.75">1.75×</option>
+                    <option value="2">2.00×</option>
+                    <option value="2.5">2.50×</option>
+                    <option value="3">3.00×</option>
+                    <option value="4">4.00×</option>
+                </select>
+            </label>
+
+            <div class="button-row">
+                <button id="startLoop" class="primary" type="button">
+                    Start Loop
+                </button>
+                <button id="stopLoop" class="danger" type="button">
+                    Stop Loop
+                </button>
+            </div>
+
+            <p id="loopStatus" class="status" role="status"></p>
         </section>
 
-        <section class="actions">
-            <button id="startButton" class="primary">▶ Start Loop</button>
-            <button id="stopButton" class="secondary">■ Stop</button>
+        <section class="panel notes-panel">
+            <h2>Timestamp Notes</h2>
+            <p class="hint">
+                Save useful ideas and return to their exact video timestamps.
+            </p>
+
+            <label class="field">
+                <span>Your note</span>
+                <textarea
+                    id="noteText"
+                    rows="3"
+                    maxlength="2000"
+                    placeholder="Write a key takeaway, formula, or reminder..."
+                ></textarea>
+            </label>
+
+            <div class="button-row">
+                <button id="saveNoteBtn" class="primary" type="button">
+                    Save at Current Time
+                </button>
+                <button id="cancelEditBtn" class="secondary hidden" type="button">
+                    Cancel Edit
+                </button>
+            </div>
+
+            <p id="notesStatus" class="status" role="status"></p>
+            <div id="notesList" class="notes-list">
+                <p class="empty-state">No notes saved for this page yet.</p>
+            </div>
         </section>
 
-        <p id="message" class="message" role="status" aria-live="polite"></p>
-
-        <footer>LOOPCLIP <span>•</span> v0.2.0</footer>
+        <footer>
+            <p>Notes are stored locally in your browser.</p>
+        </footer>
     </main>
 
     <script src="popup.js"></script>
