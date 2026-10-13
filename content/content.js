@@ -223,6 +223,43 @@ function stopLoop() {
     };
 }
 
+
+function seekTo(timestamp) {
+    const video = getTargetVideo();
+
+    if (!video) {
+        return {
+            success: false,
+            message: "No video found."
+        };
+    }
+
+    if (!Number.isFinite(timestamp) || timestamp < 0) {
+        return {
+            success: false,
+            message: "Invalid note timestamp."
+        };
+    }
+
+    if (
+        Number.isFinite(video.duration) &&
+        timestamp > video.duration
+    ) {
+        return {
+            success: false,
+            message: "The timestamp exceeds the video duration."
+        };
+    }
+
+    video.currentTime = timestamp;
+
+    return {
+        success: true,
+        timestamp: video.currentTime,
+        message: "Jumped to saved timestamp."
+    };
+}
+
 function setPlaybackRate(rate) {
     const video = getTargetVideo();
 
