@@ -1,42 +1,53 @@
-let activeTabId = null;
-let refreshInterval = null;
 
-function parseTime(value) {
-    const parts = value.trim().split(":");
+const NOTES_STORAGE_KEY = "loopclip_timestamp_notes";
 
-    if (
-        parts.length < 1 ||
-        parts.length > 3 ||
-        parts.some(part => part === "" || !/^\d+(\.\d+)?$/.test(part))
-    ) {
-        return NaN;
-    }
+let activeTab = null;
+let currentPageKey = null;
+let editingNoteId = null;
 
-    const numbers = parts.map(Number);
+const $ = (id) => document.getElementById(id);
 
-    if (numbers.some(number => !Number.isFinite(number) || number < 0)) {
-        return NaN;
-    }
+async function getActiveTab() {
+    const tabs = await chrome.tabs.query({
+        active: true,
+        currentWindow: true
+    });
 
-    if (parts.length === 1) return numbers[0];
-
-    if (parts.length === 2) {
-        if (numbers[1] >= 60) return NaN;
-        return numbers[0] * 60 + numbers[1];
-    }
-
-    if (numbers[1] >= 60 || numbers[2] >= 60) return NaN;
-
-    return numbers[0] * 3600 + numbers[1] * 60 + numbers[2];
+    return tabs[0] || null;
 }
 
-function formatTime(seconds) {
-    if (!Number.isFinite(seconds) || seconds < 0) return "--:--";
+function getPageKey(tab) {
+    if (!tab?.url) return null;
 
-    const total = Math.floor(seconds);
-    const hours = Math.floor(total / 3600);
-    const minutes = Math.floor((total % 3600) / 60);
-    const remainingSeconds = total % 60;
+    try {
+        const url = new URL(tab.url);
+        url.hash = "";
+        return url.href;
+    } catch {
+        return tab.url;
+    }
+}
+
+async function sendToContent(action, payload = {}) {
+    if (!activeTab?.id) {
+        throw new Error("No active browser tab found.");
+    }
+
+    return chrome.tabs.sendMessage(activeTab.id, {
+        action,
+        ...payload
+    });
+}
+
+function formatTimestamp(seconds) {
+    if (!Number.isFinite(seconds) || seconds < 0) {
+        return "00:00";
+    }
+
+    const totalSeconds = Math.floor(seconds);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const remainingSeconds = totalSeconds % 60;
 
     if (hours > 0) {
         return [
@@ -52,209 +63,416 @@ function formatTime(seconds) {
     ].join(":");
 }
 
-function setMessage(message) {
-    document.getElementById("message").textContent = message;
+function setStatus(elementId, message) {
+    $(elementId).textContent = message;
 }
 
-function setStatus(message, connected) {
-    document.getElementById("statusText").textContent = message;
-    document.getElementById("statusDot").style.background =
-        connected ? "#55cc88" : "#8b8798";
+async function getCurrentVideoInfo() {
+    const result = await sendToContent("getVideoInfo");
+
+    if (!result?.success) {
+        throw new Error(
+            result?.message || "Could not retrieve video information."
+        );
+    }
+
+    return result;
 }
 
-function sendToPage(message) {
-    return new Promise((resolve, reject) => {
-        chrome.tabs.sendMessage(activeTabId, message, response => {
-            if (chrome.runtime.lastError) {
-                reject(new Error(chrome.runtime.lastError.message));
-                return;
-            }
+async function loadAllNotes() {
+    const data = await chrome.storage.local.get(NOTES_STORAGE_KEY);
+    return data[NOTES_STORAGE_KEY] || {};
+}
 
-            resolve(response);
-        });
+async function saveAllNotes(notesByPage) {
+    await chrome.storage.local.set({
+        [NOTES_STORAGE_KEY]: notesByPage
     });
 }
 
-async function getVideoInfo(showErrors = false) {
+async function getPageNotes() {
+    if (!currentPageKey) return [];
+
+    const notesByPage = await loadAllNotes();
+    const notes = notesByPage[currentPageKey];
+
+    return Array.isArray(notes) ? notes : [];
+}
+
+async function refreshVideoStatus() {
     try {
-        const response = await sendToPage({ action: "getVideoInfo" });
+        const info = await getCurrentVideoInfo();
 
-        if (!response?.success) {
-            setStatus("No supported video detected", false);
-            document.getElementById("currentTime").textContent = "--:--";
-            document.getElementById("duration").textContent = "--:--";
+        const duration = info.duration === null
+            ? "Duration unavailable"
+            : `Duration: ${formatTimestamp(info.duration)}`;
 
-            if (showErrors) {
-                setMessage(response?.message || "No video found.");
-            }
-
-            return null;
-        }
-
-        setStatus("Video detected", true);
-        document.getElementById("currentTime").textContent =
-            formatTime(response.currentTime);
-        document.getElementById("duration").textContent =
-            formatTime(response.duration);
-
-        const speed = document.getElementById("playbackRate");
-        const availableSpeed = [...speed.options].some(
-            option => Number(option.value) === response.playbackRate
+        setStatus(
+            "videoStatus",
+            `Video detected · ${duration}`
         );
 
-        speed.value = availableSpeed
-            ? String(response.playbackRate)
-            : "1";
+        const availableSpeeds = [
+            ...$("speedSelect").options
+        ].map((option) => Number(option.value));
 
-        return response;
-    } catch {
-        setStatus("Page unavailable — reopen the extension", false);
+        const matchingSpeed = availableSpeeds.find(
+            (speed) => Math.abs(speed - info.playbackRate) < 0.001
+        );
 
-        if (showErrors) {
-            setMessage("This page may not allow extension scripts.");
+        if (matchingSpeed !== undefined) {
+            $("speedSelect").value = String(matchingSpeed);
         }
-
-        return null;
+    } catch (error) {
+        setStatus(
+            "videoStatus",
+            error.message || "No compatible video detected."
+        );
     }
 }
 
-async function captureTime(fieldId) {
-    const info = await getVideoInfo(true);
-
-    if (!info) return;
-
-    document.getElementById(fieldId).value =
-        formatTime(info.currentTime);
-
-    setMessage(
-        `${fieldId === "startTime" ? "Start" : "End"} set to ${formatTime(info.currentTime)}`
-    );
+function createButton(label, className, onClick) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label;
+    button.className = className;
+    button.addEventListener("click", onClick);
+    return button;
 }
 
-async function startLoop() {
-    const start = parseTime(document.getElementById("startTime").value);
-    const end = parseTime(document.getElementById("endTime").value);
-    const repeatCount = Number(document.getElementById("repeatCount").value);
-    const infinite = document.getElementById("infiniteLoop").checked;
+async function renderNotes() {
+    const container = $("notesList");
+    container.replaceChildren();
 
-    if (!Number.isFinite(start) || !Number.isFinite(end)) {
-        setMessage("Enter valid timestamps (MM:SS or HH:MM:SS).");
+    let notes;
+
+    try {
+        notes = await getPageNotes();
+    } catch {
+        container.textContent = "Unable to load saved notes.";
         return;
     }
 
-    if (end <= start) {
-        setMessage("End time must be greater than start time.");
+    notes.sort((a, b) => a.timestamp - b.timestamp);
+
+    if (notes.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "empty-state";
+        empty.textContent = "No notes saved for this page yet.";
+        container.appendChild(empty);
+        return;
+    }
+
+    for (const note of notes) {
+        const card = document.createElement("article");
+        card.className = "note-card";
+
+        const top = document.createElement("div");
+        top.className = "note-top";
+
+        const timestamp = document.createElement("span");
+        timestamp.className = "note-time";
+        timestamp.textContent = formatTimestamp(note.timestamp);
+
+        top.appendChild(timestamp);
+
+        const text = document.createElement("p");
+        text.className = "note-text";
+        text.textContent = note.text;
+
+        const actions = document.createElement("div");
+        actions.className = "note-actions";
+
+        actions.appendChild(
+            createButton("Jump to time", "primary", async () => {
+                try {
+                    const result = await sendToContent("seekTo", {
+                        timestamp: note.timestamp
+                    });
+
+                    if (!result?.success) {
+                        throw new Error(
+                            result?.message || "Unable to seek to this note."
+                        );
+                    }
+
+                    setStatus(
+                        "notesStatus",
+                        `Jumped to ${formatTimestamp(note.timestamp)}.`
+                    );
+                } catch (error) {
+                    setStatus(
+                        "notesStatus",
+                        error.message || "Unable to reach the video."
+                    );
+                }
+            })
+        );
+
+        actions.appendChild(
+            createButton("Edit", "secondary", () => {
+                editingNoteId = note.id;
+                $("noteText").value = note.text;
+                $("saveNoteBtn").textContent = "Update Note";
+                $("cancelEditBtn").classList.remove("hidden");
+                $("noteText").focus();
+
+                setStatus(
+                    "notesStatus",
+                    `Editing note at ${formatTimestamp(note.timestamp)}.`
+                );
+            })
+        );
+
+        actions.appendChild(
+            createButton("Delete", "secondary", async () => {
+                const confirmed = window.confirm(
+                    "Delete this note permanently?"
+                );
+
+                if (!confirmed) return;
+
+                try {
+                    const notesByPage = await loadAllNotes();
+                    const pageNotes = notesByPage[currentPageKey] || [];
+
+                    notesByPage[currentPageKey] = pageNotes.filter(
+                        (item) => item.id !== note.id
+                    );
+
+                    await saveAllNotes(notesByPage);
+
+                    if (editingNoteId === note.id) {
+                        resetEditor();
+                    }
+
+                    setStatus("notesStatus", "Note deleted.");
+                    await renderNotes();
+                } catch {
+                    setStatus("notesStatus", "Unable to delete the note.");
+                }
+            })
+        );
+
+        card.append(top, text, actions);
+        container.appendChild(card);
+    }
+}
+
+function resetEditor() {
+    editingNoteId = null;
+    $("noteText").value = "";
+    $("saveNoteBtn").textContent = "Save at Current Time";
+    $("cancelEditBtn").classList.add("hidden");
+}
+
+async function saveNote() {
+    const text = $("noteText").value.trim();
+
+    if (!text) {
+        setStatus("notesStatus", "Enter a note before saving.");
+        $("noteText").focus();
+        return;
+    }
+
+    if (!currentPageKey) {
+        setStatus("notesStatus", "This page cannot store notes.");
+        return;
+    }
+
+    $("saveNoteBtn").disabled = true;
+
+    try {
+        const notesByPage = await loadAllNotes();
+        const pageNotes = notesByPage[currentPageKey] || [];
+
+        if (editingNoteId) {
+            const existingNote = pageNotes.find(
+                (note) => note.id === editingNoteId
+            );
+
+            if (!existingNote) {
+                throw new Error("The note could not be found.");
+            }
+
+            existingNote.text = text;
+            existingNote.updatedAt = Date.now();
+
+            await saveAllNotes(notesByPage);
+
+            resetEditor();
+            setStatus("notesStatus", "Note updated.");
+        } else {
+            const info = await getCurrentVideoInfo();
+
+            pageNotes.push({
+                id: crypto.randomUUID(),
+                text,
+                timestamp: info.currentTime,
+                videoTitle: activeTab.title || "Untitled video",
+                videoUrl: currentPageKey,
+                createdAt: Date.now()
+            });
+
+            notesByPage[currentPageKey] = pageNotes;
+
+            await saveAllNotes(notesByPage);
+
+            resetEditor();
+            setStatus(
+                "notesStatus",
+                `Note saved at ${formatTimestamp(info.currentTime)}.`
+            );
+        }
+
+        await renderNotes();
+    } catch (error) {
+        setStatus(
+            "notesStatus",
+            error.message || "Unable to save the note."
+        );
+    } finally {
+        $("saveNoteBtn").disabled = false;
+    }
+}
+
+async function setTimestampField(fieldId) {
+    try {
+        const info = await getCurrentVideoInfo();
+        $(fieldId).value = info.currentTime.toFixed(2);
+        setStatus(
+            "loopStatus",
+            `Timestamp set to ${formatTimestamp(info.currentTime)}.`
+        );
+    } catch (error) {
+        setStatus("loopStatus", error.message);
+    }
+}
+
+async function startLoop() {
+    const start = Number($("startTime").value);
+    const end = Number($("endTime").value);
+    const repeatCount = Number($("repeatCount").value);
+    const infinite = $("infiniteLoop").checked;
+
+    if (
+        !Number.isFinite(start) ||
+        !Number.isFinite(end) ||
+        start < 0 ||
+        end <= start
+    ) {
+        setStatus("loopStatus", "Enter a valid start and end time.");
         return;
     }
 
     if (
         !infinite &&
-        (!Number.isInteger(repeatCount) || repeatCount < 1 || repeatCount > 999)
+        (!Number.isInteger(repeatCount) || repeatCount < 1)
     ) {
-        setMessage("Choose between 1 and 999 repetitions.");
-        return;
-    }
-
-    const info = await getVideoInfo(true);
-
-    if (!info) return;
-
-    if (!Number.isFinite(info.duration) || end > info.duration) {
-        setMessage("The end time exceeds the available video duration.");
+        setStatus(
+            "loopStatus",
+            "Repetitions must be a positive whole number."
+        );
         return;
     }
 
     try {
-        const response = await sendToPage({
-            action: "startLoop",
+        const result = await sendToContent("startLoop", {
             start,
             end,
             repeatCount,
             infinite
         });
 
-        setMessage(response?.message || "Unable to start loop.");
-    } catch {
-        setMessage("Unable to control this video.");
+        setStatus(
+            "loopStatus",
+            result?.message || "Loop request completed."
+        );
+    } catch (error) {
+        setStatus(
+            "loopStatus",
+            error.message || "Unable to start the loop."
+        );
     }
 }
 
 async function stopLoop() {
     try {
-        const response = await sendToPage({ action: "stopLoop" });
-        setMessage(response?.message || "Loop stopped.");
-    } catch {
-        setMessage("Unable to stop the loop.");
+        const result = await sendToContent("stopLoop");
+
+        setStatus(
+            "loopStatus",
+            result?.message || "Loop stopped."
+        );
+    } catch (error) {
+        setStatus(
+            "loopStatus",
+            error.message || "Unable to stop the loop."
+        );
     }
 }
 
 async function changePlaybackRate() {
-    const rate = Number(document.getElementById("playbackRate").value);
+    const rate = Number($("speedSelect").value);
 
     try {
-        const response = await sendToPage({
-            action: "setPlaybackRate",
-            rate
-        });
+        const result = await sendToContent("setPlaybackRate", { rate });
 
-        setMessage(response?.message || "Could not change playback speed.");
-    } catch {
-        setMessage("Unable to change playback speed on this page.");
+        if (!result?.success) {
+            throw new Error(
+                result?.message || "Unable to change playback speed."
+            );
+        }
+
+        setStatus("loopStatus", result.message);
+    } catch (error) {
+        setStatus(
+            "loopStatus",
+            error.message || "Unable to change playback speed."
+        );
     }
 }
 
-document.addEventListener("DOMContentLoaded", async () => {
-    const tabs = await chrome.tabs.query({
-        active: true,
-        currentWindow: true
+async function initialize() {
+    $("startLoop").addEventListener("click", startLoop);
+    $("stopLoop").addEventListener("click", stopLoop);
+
+    $("setStartNow").addEventListener(
+        "click",
+        () => setTimestampField("startTime")
+    );
+
+    $("setEndNow").addEventListener(
+        "click",
+        () => setTimestampField("endTime")
+    );
+
+    $("speedSelect").addEventListener("change", changePlaybackRate);
+    $("saveNoteBtn").addEventListener("click", saveNote);
+
+    $("cancelEditBtn").addEventListener("click", () => {
+        resetEditor();
+        setStatus("notesStatus", "Editing cancelled.");
     });
 
-    const tab = tabs[0];
+    $("infiniteLoop").addEventListener("change", () => {
+        $("repeatCount").disabled = $("infiniteLoop").checked;
+    });
 
-    if (!tab?.id || !/^https?:/.test(tab.url || "")) {
-        setStatus("Open a video webpage first", false);
-        setMessage("Browser-internal pages cannot be controlled.");
-        return;
+    $("repeatCount").disabled = $("infiniteLoop").checked;
+
+    try {
+        activeTab = await getActiveTab();
+        currentPageKey = getPageKey(activeTab);
+
+        await refreshVideoStatus();
+        await renderNotes();
+    } catch (error) {
+        setStatus(
+            "videoStatus",
+            error.message || "Unable to initialize LoopClip."
+        );
     }
+}
 
-    activeTabId = tab.id;
-
-    document.getElementById("startButton").addEventListener("click", startLoop);
-    document.getElementById("stopButton").addEventListener("click", stopLoop);
-    document.getElementById("setStartButton").addEventListener(
-        "click",
-        () => captureTime("startTime")
-    );
-    document.getElementById("setEndButton").addEventListener(
-        "click",
-        () => captureTime("endTime")
-    );
-    document.getElementById("refreshButton").addEventListener(
-        "click",
-        () => getVideoInfo(true)
-    );
-    document.getElementById("playbackRate")
-        ?.addEventListener("change",changePlaybackRate);
-
-    const infiniteCheckbox = document.getElementById("infiniteLoop");
-    const repeatInput = document.getElementById("repeatCount");
-
-    function updateRepeatInput() {
-        repeatInput.disabled = infiniteCheckbox.checked;
-    }
-
-    infiniteCheckbox.addEventListener("change", updateRepeatInput);
-    updateRepeatInput();
-
-    await getVideoInfo(true);
-
-    refreshInterval = setInterval(() => {
-        if (activeTabId !== null) getVideoInfo(false);
-    }, 1000);
-});
-
-window.addEventListener("unload", () => {
-    if (refreshInterval !== null) {
-        clearInterval(refreshInterval);
-    }
-});
+document.addEventListener("DOMContentLoaded", initialize);
