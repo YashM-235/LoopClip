@@ -79,10 +79,34 @@ async function getCurrentVideoInfo() {
 
 async function loadAllNotes() {
     const data = await chrome.storage.local.get(NOTES_STORAGE_KEY);
-    return data[NOTES_STORAGE_KEY] || {};
+    const notesByPage = data[NOTES_STORAGE_KEY];
+
+    if (notesByPage === undefined) {
+        return {};
+    }
+
+    if (
+        notesByPage === null ||
+        typeof notesByPage !== "object" ||
+        Array.isArray(notesByPage)
+    ) {
+        throw new Error(
+            "Saved notes have an invalid format. Existing data was not overwritten."
+        );
+    }
+
+    return notesByPage;
 }
 
 async function saveAllNotes(notesByPage) {
+    if (
+        notesByPage === null ||
+        typeof notesByPage !== "object" ||
+        Array.isArray(notesByPage)
+    ) {
+        throw new Error("Invalid notes data. Nothing was saved.");
+    }
+
     await chrome.storage.local.set({
         [NOTES_STORAGE_KEY]: notesByPage
     });
@@ -273,53 +297,90 @@ async function saveNote() {
         return;
     }
 
+    if (text.length > 2000) {
+        setStatus(
+            "notesStatus",
+            "Notes cannot exceed 2000 characters."
+        );
+        return;
+    }
+
     if (!currentPageKey) {
         setStatus("notesStatus", "This page cannot store notes.");
         return;
     }
 
     $("saveNoteBtn").disabled = true;
+    setStatus("notesStatus", "Saving note...");
 
     try {
         const notesByPage = await loadAllNotes();
-        const pageNotes = notesByPage[currentPageKey] || [];
+        const pageNotes = notesByPage[currentPageKey] ?? [];
+
+        if (!Array.isArray(pageNotes)) {
+            throw new Error(
+                "Saved notes for this page are invalid. Existing data was not overwritten."
+            );
+        }
 
         if (editingNoteId) {
-            const existingNote = pageNotes.find(
+            const noteIndex = pageNotes.findIndex(
                 (note) => note.id === editingNoteId
             );
 
-            if (!existingNote) {
-                throw new Error("The note could not be found.");
+            if (noteIndex === -1) {
+                throw new Error(
+                    "The note could not be found. Your text has been preserved."
+                );
             }
 
-            existingNote.text = text;
-            existingNote.updatedAt = Date.now();
+            const existingNote = pageNotes[noteIndex];
 
-            await saveAllNotes(notesByPage);
-
-            resetEditor();
-            setStatus("notesStatus", "Note updated.");
-        } else {
-            const info = await getCurrentVideoInfo();
-
-            pageNotes.push({
-                id: crypto.randomUUID(),
+            pageNotes[noteIndex] = {
+                ...existingNote,
                 text,
-                timestamp: info.currentTime,
-                videoTitle: activeTab.title || "Untitled video",
-                videoUrl: currentPageKey,
-                createdAt: Date.now()
-            });
+                updatedAt: Date.now()
+            };
 
             notesByPage[currentPageKey] = pageNotes;
 
             await saveAllNotes(notesByPage);
 
             resetEditor();
+            setStatus("notesStatus", "Note updated successfully.");
+        } else {
+            const info = await getCurrentVideoInfo();
+
+            if (
+                !Number.isFinite(info.currentTime) ||
+                info.currentTime < 0
+            ) {
+                throw new Error(
+                    "Could not read a valid video timestamp."
+                );
+            }
+
+            const newNote = {
+                id: crypto.randomUUID(),
+                text,
+                timestamp: info.currentTime,
+                videoTitle: activeTab?.title || "Untitled video",
+                videoUrl: currentPageKey,
+                createdAt: Date.now()
+            };
+
+            notesByPage[currentPageKey] = [
+                ...pageNotes,
+                newNote
+            ];
+
+            await saveAllNotes(notesByPage);
+
+            resetEditor();
+
             setStatus(
                 "notesStatus",
-                `Note saved at ${formatTimestamp(info.currentTime)}.`
+                `Note saved at ${formatTimestamp(newNote.timestamp)}.`
             );
         }
 
@@ -327,7 +388,7 @@ async function saveNote() {
     } catch (error) {
         setStatus(
             "notesStatus",
-            error.message || "Unable to save the note."
+            error.message || "Unable to save the note. Please try again."
         );
     } finally {
         $("saveNoteBtn").disabled = false;
